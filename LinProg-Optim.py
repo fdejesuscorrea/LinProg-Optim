@@ -10,20 +10,20 @@ from tkinter import ttk
 import tkinter.messagebox as messagebox
 import pandas as pd
 import numpy as np
+from sympy import symbols, Eq, lambdify
+import matplotlib.pyplot as plt
+from sympy import symbols, Eq, lambdify,solve
+from sympy.solvers.inequalities import reduce_rational_inequalities
 
-global root
-global maxz
+global root,text_C,maxz,restricciones,text_A,text_B,text_simbolos,new_window,desigualdades
 maxz = None
-global restricciones
 restricciones=None
-global text_A
 text_A=None
-global text_B
 text_B=None
-global text_C
 text_C=None
-global text_simbolos
 text_simbolos=None
+global b,A,simbolos,z,XB,CB,s,x,xB,Z
+global Aith,Bith,XBith
 
 def interpretar_ecuacion(ec):
     if(ec==None or ec=="" or ec=="\n"):
@@ -58,25 +58,20 @@ def sustituciones(simbolos, valores):
 
 
 def interpretar_campos():
-    global restricciones
-    global maxz
-    global numvars
-    global text_A
-    global text_B
-    global text_C
-    global text_simbolos
-    global root
+    global restricciones,maxz,numvars,text_A,text_B,text_C,text_simbolos,root,desigualdades
+    global B,Binv,b,A,C,simbolos,s,x
     numvars=int(entry_numvars.get())
     ecuacion=entry_ecuacion.get()
     maxz = interpretar_ecuacion(ecuacion)
     desigualdades=text_restriccion.get("1.0",tk.END).split("\n")[:-1]
-    print(desigualdades)
     restricciones = list(map(interpretar_ecuacion, desigualdades))
     simbolos = list(sp.symbols(f'x1:{numvars+1}'))
     coefs_dict=maxz.as_coefficients_dict()
-    x = [var for var in coefs_dict if var != 1]  # Excluimos la constante 1
+    x = simbolos#[var for var in coefs_dict if var != 1]  # Excluimos la constante 1
+    numholg=len(restricciones)
+    s= list(sp.symbols(f's1:{numholg+1}'))
     C = [coefs_dict[var] for var in x]
-    B= list(map(lambda e:e.rhs,restricciones))
+    b= list(map(lambda e:e.rhs,restricciones))
     restricder=list(map(lambda d:d.lhs,restricciones))
     variables=simbolos
     matriz_coeficientes = []
@@ -95,6 +90,10 @@ def interpretar_campos():
         # Agregar la fila de coeficientes a la matriz
         matriz_coeficientes.append(fila_coeficientes)
     A=matriz_coeficientes
+    mostrar_ecuacion()
+
+
+def mostrar_ecuacion():
     text_A = tk.Text(root, height=5, width=10, state='normal')
     text_B = tk.Text(root, height=5, width=10, state='normal')
     text_C = tk.Text(root, height=5, width=10, state='normal')
@@ -102,7 +101,7 @@ def interpretar_campos():
     
     # Insertar los datos en los widgets de texto
     text_A.insert(tk.END, convertir_a_texto(A))
-    text_B.insert(tk.END, convertir_a_texto(B))
+    text_B.insert(tk.END, convertir_a_texto(b))
     text_C.insert(tk.END, convertir_a_texto(C))
     text_simbolos.insert(tk.END, convertir_a_texto(simbolos))
     
@@ -127,17 +126,191 @@ def interpretar_campos():
     text_B.grid(row=5, column=2, padx=1, pady=10)
     text_C.grid(row=5, column=3, padx=1, pady=10,sticky="W")
 
+def open_window():
+    global new_window
+    new_window = tk.Toplevel(root)
+    new_window.title("Resultados del Método Simplex")
+    new_window.geometry("400x600")
 
-    print(x)
-    print(C)
-    print(B)
-    print(A)
-    print(restricder)
-    print(simbolos)
-    print(numvars,maxz,restricciones)
+def getCB(xB,maxz):
+    CB=[]
+    for i in xB:
+        CB.append(maxz.coeff(i))
+    return CB
+
+def getB(A,z,xB):
+    indices = []
+    for elemento in xB:
+        if elemento in z:
+            indices.append(z.index(elemento))
+    B=A[:,indices]
+    return B
+def getBinv(B):
+    Binv=np.linalg.inv(B)
+    return Binv
+def getXB(Binv,b):
+    XB=np.matmul(Binv,b)
+    return XB
+def getZ(CB,XB):
+    print(CB,XB)
+    Z=np.matmul(CB,XB)
+    return Z
+def is_optime(Binv,CB):
+    global z,xB,maxz
+    ps=list(set(z)-set(xB))
+    psi=[]
+    for elemento in ps:
+        if elemento in z:
+            psi.append(z.index(elemento))
+    ci=[]
+    pi=A[:,psi]
+    for elemento in ps:
+        if elemento in ps:
+            ci.append(maxz.coeff(str(elemento)))
+
+    ret=np.matmul(CB,np.matmul(Binv,pi))-ci
+
+    opt=True
+    mini=np.inf
+    cand=""
+    print("ret: ",ret)
+    for r in ret:
+        if(r<=0):
+            opt=False
+        if(r<mini):
+            mini=r
+    cand=z[list(ret).index(mini)]
+    return opt,cand,ret
+    
+def is_factible(cand,XB,Binv):
+    i=cand
+    pxi=A[:,z.index(cand)]
+    alfa=np.matmul(Binv,pxi)
+    theta = np.zeros_like(XB, dtype=float)  # Inicializar con ceros
+    # Dividir solo cuando alfa es mayor que cero
+    theta[alfa > 0] = XB[alfa > 0] / alfa[alfa > 0]
+    # Los elementos donde alfa es cero o menor se mantienen como NaN
+    theta[alfa <= 0] = np.nan
+    mini=min(theta)
+    i=list(theta).index(mini)
+    sale=xB[i]
+    return None,sale
+
+def metodo_grafico_programacion_lineal(funcion_objetivo, desigualdades, x_lim=(0, 10), y_lim=(0, 10)):
+    """
+    Método gráfico para problemas de programación lineal.
+    
+    Parámetros:
+    - funcion_objetivo: expresión de sympy para la función objetivo a maximizar.
+    - desigualdades: lista de expresiones sympy con las restricciones (desigualdades).
+    - x_lim: tupla que define el rango de valores de x para la gráfica (ej. (0, 10)).
+    - y_lim: tupla que define el rango de valores de y para la gráfica (ej. (0, 10)).
+    """
+    global simbolos
+    x,y=simbolos[0],simbolos[1]
+    # Crear una figura para los gráficos
+    fig, ax = plt.subplots(figsize=(8, 8))
+
+    # Plotear cada desigualdad como una línea en el gráfico
+    for desigualdad in desigualdades:
+        # Convertir la desigualdad en una ecuación y resolver para y en términos de x
+        expr = desigualdad.lhs - desigualdad.rhs
+        y_expr = solve(expr, y)
+        
+        if y_expr:
+            # Crear una función lambda de la expresión de y en función de x
+            y_func = lambdify(x, y_expr[0], 'numpy')
+            x_vals = np.linspace(x_lim[0], x_lim[1], 400)
+            y_vals = np.full_like(x_vals, y_func(x_vals)) if np.isscalar(y_func(x_vals)) else y_func(x_vals)
 
 
-def linProgOpti():
+            # Trazar la línea de la restricción
+            ax.plot(x_vals, y_vals, label=str(desigualdad))
+            
+            # Rellenar el área factible según el tipo de desigualdad
+            if '<=' in str(desigualdad):
+                ax.fill_between(x_vals, y_vals, y_lim[0], color='gray', alpha=0.3)
+            elif '>=' in str(desigualdad):
+                ax.fill_between(x_vals, y_vals, y_lim[1], color='gray', alpha=0.3)
+    
+    # Configurar el gráfico y añadir etiquetas
+    ax.set_xlim(x_lim)
+    ax.set_ylim(y_lim)
+    ax.set_xlabel('x')
+    ax.set_ylabel('y')
+    ax.set_title('Método gráfico para programación lineal')
+    ax.legend()
+    plt.grid(True)
+
+    # Convertir la función objetivo en una función evaluable y trazar contornos
+    f_obj = lambdify((x, y), funcion_objetivo, 'numpy')
+    x_vals = np.linspace(x_lim[0], x_lim[1], 400)
+    y_vals = np.linspace(y_lim[0], y_lim[1], 400)
+    X, Y = np.meshgrid(x_vals, y_vals)
+    Z = f_obj(X, Y)
+    ax.contour(X, Y, Z, levels=20, cmap="RdYlBu", alpha=0.5)
+
+    # Mostrar el gráfico
+    plt.show()
+
+
+def resolver_simplexrev():
+    #global new_window,xB,maxz,XB,Z,xB,z
+    global z,xB,maxz,b,Z,CB,XB,x,s,A,desigualdades
+    B=np.ones((len(s),len(s)))
+    Binv=B
+    opti=False
+    z=x+s
+    xB=s
+    Z=np.zeros(len(xB))
+    A=np.hstack((A,np.eye(len(s))))   
+    A=A.astype(float)
+    while(not opti):                                                              
+        print("-_-_-_-_-_-_-_-_")
+        print("iteración")
+        B=getB(A,z,xB)
+        Binv=getBinv(B)
+        XB=getXB(Binv,b)
+        CB=getCB(xB,maxz)
+        Z=getZ(CB,XB)
+        opti,entra,ret=is_optime(Binv,CB)
+        fact,sale=is_factible(entra,XB,Binv)
+        xB[list(xB).index(sale)]=entra
+        print("B: ",B)
+        print("Binv: ",Binv)
+        print("XB: ",XB)
+        print("CB: ",CB)
+        print("Z: ",Z)
+        print("Opti: ",opti)
+        print("entra: ",entra)
+        print("sale: ",sale)
+        print("xB: ",xB)
+        print("z: ",z)
+    metodo_grafico_programacion_lineal(maxz, restricciones, x_lim=(0, 10), y_lim=(0, 10))
+
+    #open_window()
+'''
+def resolver_simplexrev():
+    global new_window,xB,maxz,XB,Z,xB,z
+    initial_transform()
+    opt,entra,ret=is_optime()
+    while(not opt):                                                              
+        xB[list(xB).index(sale)]=entra
+        print("-_-_-_-_-_-_-_-_")
+        print("iteración")
+        getXB()
+        getCB()
+        getB()
+        getBinv()
+        getZ()
+        opt,entra,ret=is_optime()
+
+    print(xB,XB,ret)
+    #open_window()
+'''
+
+
+def setInterface():
     global root
     root = tk.Tk()
     root.title("Metodo Simplex - Programación Lineal")
@@ -145,9 +318,6 @@ def linProgOpti():
     global entry_ecuacion
     global entry_numvars
     global text_restriccion
-    
-
-    
     # campos y etiquetas para la introducción de datos
     label_ecuacion = tk.Label(root, text="Inserta la ecuación a maximizar (Max Z):")
     label_ecuacion.grid(row=0, column=0, padx=10, pady=10)
@@ -166,10 +336,14 @@ def linProgOpti():
     
     button_interpretar = tk.Button(root, text="Interpretar campos", command=interpretar_campos)
     button_interpretar.grid(row=3, column=2, padx=10, pady=10)
+
+    button_interpretar = tk.Button(root, text="resolver", command=resolver_simplexrev)
+    button_interpretar.grid(row=3, column=3, padx=10, pady=10)
+
+
+
     
 
-
-    root.mainloop()
-
 if(__name__=="__main__"):
-    linProgOpti()
+    setInterface()
+    root.mainloop()
