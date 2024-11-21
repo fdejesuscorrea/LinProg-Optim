@@ -15,8 +15,9 @@ import matplotlib.pyplot as plt
 from sympy import symbols, Eq, lambdify,solve
 from sympy.solvers.inequalities import reduce_rational_inequalities
 
-global root,text_C,maxz,restricciones,text_A,text_B,text_simbolos,new_window,desigualdades
+global root,my_text,text_C,maxz,restricciones,text_A,text_B,text_simbolos,new_window,desigualdades
 maxz = None
+my_text="Resultados Por Iteracion Metodo Simplex Revisado\n"
 restricciones=None
 text_A=None
 text_B=None
@@ -126,11 +127,36 @@ def mostrar_ecuacion():
     text_B.grid(row=5, column=2, padx=1, pady=10)
     text_C.grid(row=5, column=3, padx=1, pady=10,sticky="W")
 
-def open_window():
-    global new_window
+def open_new_window():
+    # Crear una nueva ventana
+    global new_window,root,my_text
     new_window = tk.Toplevel(root)
-    new_window.title("Resultados del Método Simplex")
+    new_window.title("Nueva Ventana")
     new_window.geometry("400x600")
+    
+    # Crear un marco para contener el canvas y el scrollbar
+    frame = ttk.Frame(new_window)
+    frame.pack(fill=tk.BOTH, expand=True)
+    
+    # Crear un canvas
+    canvas = tk.Canvas(frame)
+    canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+    
+    # Agregar un scrollbar al canvas
+    scrollbar = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=canvas.yview)
+    scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+    canvas.configure(yscrollcommand=scrollbar.set)
+    
+    # Crear un frame para el contenido dentro del canvas
+    content_frame = ttk.Frame(canvas)
+    
+    # Configurar el contenido para que sea desplazable
+    canvas.create_window((0, 0), window=content_frame, anchor="nw")
+    content_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+    
+    # Mostrar el texto dentro del contenido
+    label = ttk.Label(content_frame, text=my_text, wraplength=380, anchor="center", justify="left")
+    label.pack(pady=10, padx=10)
 
 def getCB(xB,maxz):
     CB=[]
@@ -354,7 +380,6 @@ def is_optime(Binv, CB):
     mini = np.inf
     cand = ""
     
-    print("ret: ", ret)
     for r in ret:
         if r < 0:  # Solo seleccionamos las variables con costos negativos
             opt = False
@@ -388,7 +413,7 @@ def is_factible(cand, XB, Binv):
 
 
 def resolver_simplexrev():
-    global z,b, xB, maxz, b, Z,C, CB, XB, x, s, A, desigualdades
+    global z,b, xB, maxz, b, Z,C, CB, XB, x, s, A, desigualdades,my_text
     B = np.ones((len(s), len(s)))
     Binv = B
     opti = False
@@ -405,36 +430,32 @@ def resolver_simplexrev():
         if iteraciones > MAX_ITER:
             raise ValueError("El algoritmo no converge después de demasiadas iteraciones")
         iteraciones += 1
-        print("-_-_-_-_-_-_-_-_")
-        print("iteración: ", iteraciones)
-
+        my_text+="-_-_-_-_-_-_-_-_\n"
+        my_text+=("iteración: "+ str(iteraciones)+"\n")
         B = getB(A, z, xB)
         Binv = getBinv(B)
         XB = getXB(Binv, b)
         CB = getCB(xB, maxz)
         Z = getZ(CB, XB)
         opti, entra, ret = is_optime(Binv, CB)
-        print("B: ", B)
-        print("Binv: ", Binv)
-        print("XB: ", XB)
-        print("CB: ", CB)
-        print("Z: ", Z)
-        print("Opti: ", opti)
-        print("entra: ", entra)
-        print("xB: ", xB)
-        print("z: ", z)
-        print("b:",b)
-        print("C:",C)
-        print("A:",A)
-        print(desigualdades,"\n",restricciones)
+        my_text+=("B: "+ str(B)+"\n")
+        my_text+=("Binv: "+ str(Binv)+"\n")
+        my_text+=("XB: "+ str(XB)+"\n")
+        my_text+=("CB: "+ str(CB)+"\n")
+        my_text+=("Z: "+ str(Z)+"\n")
+        my_text+=("Opti: "+ str(opti)+"\n")
+        my_text+=("entra: "+ str(entra)+"\n")
+        my_text+=("xB: "+ str(xB)+"\n")
+        my_text+=("z: "+str(z)+"\n")
         if opti:
+            my_text+=("-_-_-_-_-_-_-_-_\n-_-_-_-_-_-_-_-_\nsolución:"+str(XB))
             break
         fact, sale = is_factible(entra, XB, Binv)
         print("sale: ", sale)
         if sale is None:
             raise ValueError("Problema ilimitado: no hay solución factible")
         xB[list(xB).index(sale)] = entra
-
+    open_new_window()
     metodo_grafico_programacion_lineal(maxz, restricciones, x_lim=(0, 10), y_lim=(0, 10))
     #b=recursos A=Coefs tecnolo C=coefs de costo Binv=(matriz de holgura)
     analisis_de_sensibilidad(b,C,A,Binv,restricciones)
