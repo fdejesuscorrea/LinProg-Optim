@@ -271,7 +271,23 @@ def metodo_grafico_programacion_lineal(funcion_objetivo, desigualdades, x_lim=(0
 
     plt.show()
 
-def analisis_de_sensibilidad(b,C,A,Binv, desigualdades, x_lim=(0, 10), y_lim=(0, 10)):
+def agregar_nueva_variable(B, CB):
+    coeficiente_nueva_variable = 1/2
+    coeficientes_tecnologicos_nuevos = sp.Matrix([2, 1])
+
+    print(f"\nAgregaremos una nueva variable.\n\n"
+          f"nueva funcion objetivo:\n Zmax = 10*x1 + 14*x2 + 0.5*x3\n\n"
+          f"Nuevas restricciones:\n4*x1 + 6*x2 + 2*x3<= 24\n2*x1 + 6*x2 +x1 <= 20\n\n")
+
+    resultado = [sp.nsimplify(x) for x in (B * coeficientes_tecnologicos_nuevos)]
+    resultado_final = coeficiente_nueva_variable - (CB.T * sp.Matrix(resultado))[0]
+    print(f"Nuevo factor para C_j - Z_j: {resultado_final}")
+    if resultado_final > 0:
+        print("La solucion dejó de ser optima")
+    else:
+        print("La solucion sigue siendo optima")
+
+def analisis_de_sensibilidad(b,C,A,Binv):
     """
     Realiza el análisis de sensibilidad y muestra los resultados en tablas.
 
@@ -280,87 +296,19 @@ def analisis_de_sensibilidad(b,C,A,Binv, desigualdades, x_lim=(0, 10), y_lim=(0,
     - desigualdades: Lista de desigualdades sympy con las restricciones.
     - x_lim, y_lim: Límites para graficar las restricciones.
     """
-    # Variables simbólicas
-    x, y = symbols('x y')
+    d = sp.symbols("d")
+    b = sp.Matrix(b)
+    Binv = sp.Matrix(Binv)
+    for i in range(len(restricciones)):
+        restricciones_aux = b
+        restricciones_aux[i] += d
+        resultado_fracciones = sp.Matrix(Binv * restricciones_aux)
+        inequalities = [sp.Ge(x, 0) for x in resultado_fracciones]
+        solucion = sp.solve(inequalities, d)
+        print(f"\nIntervalo de d para X{i+1}\n")
+        print(solucion)
 
-    # Extraer coeficientes de la función objetivo
-    Z = [-z.coeff(x), -z.coeff(y)]  # Negativo porque linprog minimiza
-
-    # Convertir desigualdades en formato matricial
-    A = []
-    b = []
-    for desigualdad in desigualdades:
-        expr = desigualdad.lhs - desigualdad.rhs
-        coef = [expr.coeff(x), expr.coeff(y)]
-        A.append(coef)
-        b.append(float(desigualdad.rhs))  # Asegurarse de que sea flotante
-
-    # Resolver problema inicial
-    res = linprog(Z, A_ub=A, b_ub=b, bounds=[x_lim, y_lim],method="simplex")
-
-    if not res.success:
-        print(f"Error: {res.message}")
-        return  # Salir si no hay solución factible
-
-    xB = res.x
-    maxz = -res.fun
-
-    # Mostrar solución inicial
-    print(f"Solución inicial: MaxZ = {maxz:.2f}, x = {xB[0]:.2f}, y = {xB[1]:.2f}\n")
-
-    # Análisis de sensibilidad para coeficientes de Z
-    sensibilidad_Z = []
-    for delta in np.linspace(-2, 2, 11):  # Variar coeficiente de x entre -2 y 2
-        Z_mod = [Z[0] + delta, Z[1]]  # Modificar coeficiente de x
-        res_mod = linprog(Z_mod, A_ub=A, b_ub=b, bounds=[x_lim, y_lim],method="simplex")
-        if res_mod.success:
-            sensibilidad_Z.append({
-                "Delta Coef. x": delta,
-                "MaxZ": -res_mod.fun,
-                "x": res_mod.x[0],
-                "y": res_mod.x[1]
-            })
-        else:
-            sensibilidad_Z.append({
-                "Delta Coef. x": delta,
-                "MaxZ": None,
-                "x": None,
-                "y": None
-            })
-
-    # Mostrar tabla de sensibilidad para Z
-    df_Z = pd.DataFrame(sensibilidad_Z)
-    print("Análisis de sensibilidad para los coeficientes de Z:")
-    print(df_Z)
-
-    # Análisis de sensibilidad para recursos b
-    sensibilidad_b = []
-    for i in range(len(b)):  # Iterar sobre cada restricción
-        for delta in np.linspace(-2, 2, 11):  # Variar recurso entre -2 y 2
-            b_mod = b.copy()
-            b_mod[i] += delta  # Modificar recurso actual
-            res_mod = linprog(Z, A_ub=A, b_ub=b_mod, bounds=[x_lim, y_lim])
-            if res_mod.success:
-                sensibilidad_b.append({
-                    "Restricción": f"b[{i}]",
-                    "Delta Recurso": delta,
-                    "MaxZ": -res_mod.fun,
-                    "x": res_mod.x[0],
-                    "y": res_mod.x[1]
-                })
-            else:
-                sensibilidad_b.append({
-                    "Restricción": f"b[{i}]",
-                    "Delta Recurso": delta,
-                    "MaxZ": None,
-                    "x": None,
-                    "y": None
-                })
-
-    # Mostrar tabla de sensibilidad para b
-    df_b = pd.DataFrame(sensibilidad_b)
-    print("\nAnálisis de sensibilidad para los recursos (b):")
-    print(df_b)
+    agregar_nueva_variable(Binv, sp.Matrix(C))
 
 
 def is_optime(Binv, CB):
@@ -458,7 +406,7 @@ def resolver_simplexrev():
     open_new_window()
     metodo_grafico_programacion_lineal(maxz, restricciones, x_lim=(0, 10), y_lim=(0, 10))
     #b=recursos A=Coefs tecnolo C=coefs de costo Binv=(matriz de holgura)
-    analisis_de_sensibilidad(b,C,A,Binv,restricciones)
+    analisis_de_sensibilidad(b,C,A,Binv)
 
 
 def setInterface():
