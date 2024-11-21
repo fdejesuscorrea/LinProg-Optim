@@ -131,7 +131,7 @@ def open_new_window():
     # Crear una nueva ventana
     global new_window,root,my_text
     new_window = tk.Toplevel(root)
-    new_window.title("Nueva Ventana")
+    new_window.title("Solución Simplex Revisado")
     new_window.geometry("400x600")
     
     # Crear un marco para contener el canvas y el scrollbar
